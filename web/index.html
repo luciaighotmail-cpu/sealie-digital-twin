@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sealie Digital Twin R01 — Observer</title>
+  <style>
+    :root {
+      --bg: #0a0b0f; --panel: #12141c; --border: #1e2230;
+      --text: #e6e8ef; --muted: #8b90a0; --accent: #c9a227;
+      --warn: #f39c12; --green: #2ecc71;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 1rem; }
+    h1 { color: var(--accent); font-size: 1.35rem; margin-bottom: 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.8rem; margin-bottom: 1rem; }
+    .banner {
+      background: rgba(243,156,18,0.12); border: 1px solid var(--warn);
+      color: #f5d0a9; padding: 0.6rem 0.8rem; border-radius: 6px;
+      font-size: 0.8rem; margin-bottom: 1rem;
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .panel h2 { font-size: 0.9rem; margin-bottom: 0.6rem; color: var(--accent); }
+    .tag { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em; padding: 0.1rem 0.35rem;
+           border-radius: 2px; background: var(--border); color: var(--warn); }
+    ul { list-style: none; font-size: 0.8rem; }
+    li { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+    .status { color: var(--green); font-size: 0.7rem; }
+    .muted { color: var(--muted); }
+    code { font-family: ui-monospace, monospace; font-size: 0.7rem; color: var(--accent); }
+    #api-base { width: 100%; background: var(--bg); border: 1px solid var(--border);
+                color: var(--text); padding: 0.4rem; border-radius: 4px; margin-bottom: 0.5rem; }
+    button { background: var(--bg); border: 1px solid var(--border); color: var(--text);
+             padding: 0.35rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>⚜️ Sealie Digital Twin R01</h1>
+  <p class="sub">Observer surface · PC / phone · read-only</p>
+
+  <div class="banner">
+    <strong>SYNTHETIC ONLY</strong> · R0 spending · No external actions · Execution authority not granted ·
+    Unreal / Pixel Streaming / live integrations <em>not verified</em>
+  </div>
+
+  <div style="margin-bottom:1rem">
+    <input id="api-base" value="http://127.0.0.1:8765" />
+    <button onclick="refresh()">Refresh</button>
+  </div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Scene nodes <span class="tag">SYNTHETIC</span></h2>
+      <ul id="nodes"><li class="muted">Loading…</li></ul>
+    </section>
+    <section class="panel">
+      <h2>Agents <span class="tag">SYNTHETIC</span></h2>
+      <ul id="agents"><li class="muted">Loading…</li></ul>
+    </section>
+    <section class="panel">
+      <h2>Tasks <span class="tag">SYNTHETIC</span></h2>
+      <ul id="tasks"><li class="muted">Loading…</li></ul>
+    </section>
+    <section class="panel">
+      <h2>Recent events <span class="tag">SYNTHETIC</span></h2>
+      <ul id="events"><li class="muted">Loading…</li></ul>
+    </section>
+    <section class="panel">
+      <h2>Telemetry (synthetic)</h2>
+      <ul id="telemetry"><li class="muted">Loading…</li></ul>
+    </section>
+    <section class="panel">
+      <h2>Policy</h2>
+      <ul id="policy"><li class="muted">Loading…</li></ul>
+    </section>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    function base() { return $("api-base").value.replace(/\/$/, ""); }
+
+    async function get(path) {
+      const r = await fetch(base() + path);
+      if (!r.ok) throw new Error(r.status + " " + path);
+      return r.json();
+    }
+
+    function list(el, items, render) {
+      el.innerHTML = items.length ? items.map(render).join("") : "<li class='muted'>Empty</li>";
+    }
+
+    async function refresh() {
+      try {
+        const health = await get("/health");
+        list($("policy"), [
+          ["Data policy", health.data_policy],
+          ["Spending", health.spending],
+          ["External actions", health.external_actions],
+          ["Execution authority", health.execution_authority],
+          ["Revision", health.revision],
+        ], ([k,v]) => `<li><strong>${k}</strong>: <code>${v}</code></li>`);
+
+        const nodes = await get("/scene/nodes");
+        list($("nodes"), nodes.nodes, n => `<li>${n}</li>`);
+
+        const agents = await get("/agents");
+        list($("agents"), agents, a =>
+          `<li><strong>${a.name}</strong> <span class="status">${a.status}</span><br>
+           <span class="muted">${a.role} · ${a.workstation || "—"}</span></li>`);
+
+        const tasks = await get("/tasks");
+        list($("tasks"), tasks, t =>
+          `<li><strong>${t.title}</strong> <span class="status">${t.status}</span></li>`);
+
+        const events = await get("/events?limit=12");
+        list($("events"), events.reverse(), e =>
+          `<li><code>${e.kind}</code> · ${e.source}<br>
+           <span class="muted">${e.timestamp}</span></li>`);
+
+        const tel = await get("/telemetry/synthetic");
+        list($("telemetry"), tel, s =>
+          `<li>${s.node_id} · ${s.metric} = <strong>${s.value}</strong> ${s.unit}</li>`);
+      } catch (err) {
+        $("policy").innerHTML = `<li class="muted">API unreachable: ${err.message}. Start uvicorn on port 8765.</li>`;
+      }
+    }
+
+    refresh();
+  </script>
+</body>
+</html>
